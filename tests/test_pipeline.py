@@ -3,11 +3,13 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from fastapi.testclient import TestClient
 
 from src.features.build_features import build_features
 from src.models.evaluate_model import evaluate_model
 from src.models.predict_model import predict_file
 from src.models.train_model import train_model
+from src.service import app, create_app
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +37,33 @@ def test_weather_pipeline(tmp_path: Path) -> None:
     assert set(predictions["RainTomorrowPrediction"]) <= {"No", "Yes"}
     assert predictions["RainTomorrowProbability"].between(0.0, 1.0).all()
 
+    with TestClient(create_app(model_path, model_version="test-version")) as client:
+        assert client.get("/health").json() == {
+            "status": "ok",
+            "model_version": "test-version",
+        }
+        response = client.post(
+            "/predict",
+            json={
+                "MinTemp": 16.1,
+                "MaxTemp": 22.4,
+                "Rainfall": 8.2,
+                "Humidity3pm": 82,
+                "Pressure3pm": 1004.6,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["prediction"] in {"No", "Yes"}
+        assert 0.0 <= response.json()["rain_probability"] <= 1.0
+        assert response.json()["model_version"] == "test-version"
+
+        invalid_response = client.post("/predict", json={"MinTemp": 10})
+        assert invalid_response.status_code == 422
+        metrics = client.get("/metrics").text
+        assert "weather_prediction_requests_total" in metrics
+        assert "weather_prediction_errors_total" in metrics
+        assert "weather_predictions_total" in metrics
+
 
 def test_prediction_rejects_missing_features(tmp_path: Path) -> None:
     input_path = tmp_path / "incomplete.csv"
@@ -42,3 +71,11 @@ def test_prediction_rejects_missing_features(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Missing required feature columns"):
         predict_file(input_path, tmp_path / "unused.joblib", tmp_path / "predictions.csv")
+
+
+def test_default_service_loads_dvc_model() -> None:
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["model_version"] == "local"

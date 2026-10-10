@@ -64,16 +64,50 @@ in `.dvc/config`; use a non-secret URL and keep credentials outside the repo.
 
 ## Deploy the model
 
-The GitHub Actions workflow runs CI on pushes and pull requests. To publish a
-model, push a version tag such as `v0.1.0`. The release job rebuilds and tests the
-pipeline, blocks publication if F1 is below `0.70`, then attaches
-`weather_model.joblib` and `metrics.json` to the GitHub Release. This example
-rebuilds from the Git-tracked sample data, so it does not need a DVC remote.
+The service exposes `GET /health`, `POST /predict`, and `GET /metrics`. The
+prediction endpoint accepts one JSON weather observation with the same feature
+names as the CSV and returns the predicted label, rain probability, and model
+version. Prometheus metrics include request counts, errors, latency, and
+prediction counts by outcome.
 
-This publishes a versioned model artifact, not a live prediction service. To
-serve predictions, package the model and prediction CLI in a service/container
-and deploy it to your chosen hosting platform. Restrict release creation to
-protected tags and retain the source commit and metrics with the deployed model.
+Build and run the service locally after `dvc repro`:
+
+```powershell
+docker build --build-arg MODEL_VERSION=local -t weather-mlops:local .
+docker run --rm -p 8000:8000 weather-mlops:local
+```
+
+Check service health at `http://localhost:8000/health` and scrape metrics from
+`http://localhost:8000/metrics`. Send a prediction with:
+
+```powershell
+$observation = @{ MinTemp = 16.1; MaxTemp = 22.4; Rainfall = 8.2; Humidity3pm = 82; Pressure3pm = 1004.6 } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/predict -ContentType 'application/json' -Body $observation
+```
+run locally no docker:
+```
+.venv\Scripts\python.exe -m uvicorn src.service:app --host 127.0.0.1 --port 8000
+```
+
+The sample service has no authentication or TLS termination. Keep it on a
+trusted network for local use; before exposing it publicly, add authentication,
+HTTPS, and request rate limits at the service or behind a gateway.
+
+Push a version tag such as `v0.1.0` to trigger the release workflow. It rebuilds
+and tests the pipeline, blocks publication if F1 is below `0.70`, attaches the
+model and metrics to the GitHub Release, and publishes a serving image to GitHub
+Container Registry (`ghcr.io/<owner>/<repo>:v0.1.0` and `:latest`). The image
+contains the model and prediction service; the registry package may need its
+visibility configured before your host can pull it. This example rebuilds from
+the Git-tracked sample data and does not require a DVC remote.
+
+The workflow publishes the image but does not start it on a hosting platform.
+Configure your container host to pull the tagged image, expose port `8000`, and
+provide a health check at `/health`. Configure Prometheus to scrape `/metrics`
+and alert on request errors, latency, and unusual prediction rates. These service
+metrics do not measure model accuracy; calculate delayed precision, recall, and
+F1 when ground-truth outcomes arrive. Restrict release tags and retain the source
+commit and metrics with each deployed model.
 
 ## Monitor a deployment
 
