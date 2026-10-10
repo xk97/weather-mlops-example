@@ -1,0 +1,25 @@
+stages:
+  preprocess:
+    cmd: python -m src.features.build_features data/raw/weather.csv data/processed/weather.csv
+    deps:
+      - data/raw/weather.csv
+      - src/features/build_features.py
+    outs:
+      - data/processed/weather.csv
+  train:
+    cmd: python -m src.models.train_model data/processed/weather.csv models/weather_model.joblib
+    deps:
+      - data/processed/weather.csv
+      - src/models/train_model.py
+      - src/features/build_features.py
+    outs:
+      - models/weather_model.joblib
+  evaluate:
+    cmd: python -m src.models.evaluate_model data/processed/weather.csv models/weather_model.joblib reports/metrics.json
+    deps:
+      - data/processed/weather.csv
+      - models/weather_model.joblib
+      - src/models/evaluate_model.py
+      - src/features/build_features.py
+    metrics:
+      - reports/metrics.json

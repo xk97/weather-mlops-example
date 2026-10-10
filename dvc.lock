@@ -1,0 +1,65 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python -m src.features.build_features data/raw/weather.csv
+      data/processed/weather.csv
+    deps:
+    - path: data/raw/weather.csv
+      hash: md5
+      md5: 39d2436fe03bfccfb5882deb1d38476b
+      size: 1580
+    - path: src/features/build_features.py
+      hash: md5
+      md5: b11b6de87c2c01b1429ca5dee9509634
+      size: 892
+    outs:
+    - path: data/processed/weather.csv
+      hash: md5
+      md5: e2406ba3c0fdd95b09bf10dbbcb97bcf
+      size: 928
+  train:
+    cmd: python -m src.models.train_model data/processed/weather.csv
+      models/weather_model.joblib
+    deps:
+    - path: data/processed/weather.csv
+      hash: md5
+      md5: e2406ba3c0fdd95b09bf10dbbcb97bcf
+      size: 928
+    - path: src/features/build_features.py
+      hash: md5
+      md5: b11b6de87c2c01b1429ca5dee9509634
+      size: 892
+    - path: src/models/train_model.py
+      hash: md5
+      md5: 556dcb471cbe718bf6c4f06c745730a9
+      size: 1016
+    outs:
+    - path: models/weather_model.joblib
+      hash: md5
+      md5: a1a218ac66459141aded6f4bed645555
+      size: 65913
+  evaluate:
+    cmd: python -m src.models.evaluate_model data/processed/weather.csv
+      models/weather_model.joblib reports/metrics.json
+    deps:
+    - path: data/processed/weather.csv
+      hash: md5
+      md5: e2406ba3c0fdd95b09bf10dbbcb97bcf
+      size: 928
+    - path: models/weather_model.joblib
+      hash: md5
+      md5: a1a218ac66459141aded6f4bed645555
+      size: 65913
+    - path: src/features/build_features.py
+      hash: md5
+      md5: b11b6de87c2c01b1429ca5dee9509634
+      size: 892
+    - path: src/models/evaluate_model.py
+      hash: md5
+      md5: b25a2127778a3a86b084edf1ac43eab5
+      size: 1616
+    outs:
+    - path: reports/metrics.json
+      hash: md5
+      md5: 8bbaf985fd8aeb41db8cdecdbe668aaf
+      size: 78
