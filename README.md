@@ -19,6 +19,47 @@ by Git, so reproducing the pipeline does not require a DVC remote or secrets.
 
 GitHub Actions runs the same pipeline and tests on pushes and pull requests.
 
+## data 
+/data folder holds raw and processed data, using src.data scripts.
+
+```
+.venv\Scripts\python.exe -m src.data.make_dataset data/raw/weather.csv data/processed/weather.csv
+```
+
+## CI and release triggers
+
+The workflow has two jobs. `pipeline` runs on branch pushes, pull requests, and
+manual runs; it reproduces the DVC pipeline, runs tests, and smoke-tests CSV
+prediction. The `publish-release` job runs only for tags whose names start with
+`v`, and only after `pipeline` succeeds. A manual run from a branch therefore
+runs CI while showing `publish-release` as skipped; that is expected.
+
+To try CI, create and push a test branch (the GitHub repository must already be
+configured as the `origin` remote):
+
+```powershell
+git switch -c ci-test
+git push -u origin ci-test
+```
+
+Open the repository's **Actions** tab to inspect the run. Pushing later commits
+to that branch runs CI again. Opening a pull request into the default branch also
+runs CI.
+
+To try the publishing job after CI passes, push a version tag pointing to a
+commit that contains the workflow:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The tag run checks the F1 threshold, creates or updates a GitHub Release with the
+model and metrics, and publishes a container image to GHCR. Use a new version
+tag for each release; pushing a tag makes those artifacts visible in the
+repository. This publishes the artifacts but does not deploy the image to a
+running host.
+
 ## Make predictions
 
 After `dvc repro` has created the model, run the prediction CLI with an input CSV
@@ -62,6 +103,53 @@ remote using environment variables or your cloud provider's credential chain,
 then run `python -m dvc pull`. Never commit access keys. The remote URL is saved
 in `.dvc/config`; use a non-secret URL and keep credentials outside the repo.
 
+## Track experiments with MLflow
+
+When DVC runs the `evaluate` stage, it also creates an MLflow run in the local
+SQLite store `mlflow.db`. Each run records the model parameters, a SHA-256 hash
+of the processed dataset, evaluation metrics, and the trained model. Model files
+are stored in MLflow's local artifact directory; the database and artifacts are
+ignored by Git.
+
+Open the experiment UI from the project root:
+
+```powershell
+uv run --python .venv\Scripts\python.exe mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
+Then visit `http://127.0.0.1:5000` to compare runs and inspect their metrics and
+models. A new run is logged whenever DVC executes the evaluation stage. GitHub
+Actions uses its own temporary database and artifacts, which disappear after the
+job; set `MLFLOW_TRACKING_URI` to a shared tracking server if you want CI runs to
+persist and be visible locally.
+
+### Promote a reviewed run
+
+Model logging does not register every run. First open a run in the MLflow UI and
+review its metrics, parameters, and dataset hash. Copy its run ID, then preview
+it in the promotion command:
+
+```powershell
+$runId = "paste-the-run-id-from-the-MLflow-UI"
+.venv\Scripts\python.exe -m src.models.promote_model $runId
+```
+
+The command prints the run status and metrics but does not change the registry.
+After deciding that this run should be promoted, repeat the command with
+`--confirm`:
+
+```powershell
+.venv\Scripts\python.exe -m src.models.promote_model $runId --confirm
+```
+
+This creates a version under `weather-rain-classifier` and points its `champion`
+alias to that version. Re-promoting the same run reuses its version. This is a
+manual local registry action; it does not deploy the model or persist a registry
+to GitHub Actions. The local registry uses `mlflow.db` and the artifact store
+configured for the experiment. The command does not enforce a quality threshold:
+review the run's metrics and dataset hash before confirming. The synthetic sample
+is for demonstrating the workflow, not for judging real model quality.
+
 ## Deploy the model
 
 The service exposes `GET /health`, `POST /predict`, and `GET /metrics`. The
@@ -70,7 +158,29 @@ names as the CSV and returns the predicted label, rain probability, and model
 version. Prometheus metrics include request counts, errors, latency, and
 prediction counts by outcome.
 
-Build and run the service locally after `dvc repro`:
+To serve the model registered under the `champion` alias, first promote a run as
+described in the MLflow section. Then, in PowerShell, point the API at the local
+tracking database and registry URI:
+
+```powershell
+$env:MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+$env:MODEL_URI = "models:/weather-rain-classifier@champion"
+.venv\Scripts\python.exe -m uvicorn src.service:app --host 127.0.0.1 --port 8000
+```
+
+This serves the model version currently assigned to `champion`; changing the
+alias changes which version is loaded the next time the service starts. The
+SQLite registry and its model artifact directory are local to this machine. For
+Docker or another host, use a shared MLflow server and artifact store, or make
+the local database and artifact files accessible to that environment.
+
+For a repeatable deployment, configure `MODEL_URI` to a specific registered
+version (for example, `models:/weather-rain-classifier/1`) instead of the mutable
+`champion` alias. The version number should be the one you reviewed and promoted.
+
+The Dockerfile currently bundles `models/weather_model.joblib` from the DVC
+pipeline. It does not fetch the model from the MLflow registry. Build and run
+this bundled-model image locally after `dvc repro`:
 
 ```powershell
 docker build --build-arg MODEL_VERSION=local -t weather-mlops:local .

@@ -5,6 +5,8 @@ from time import perf_counter
 from typing import Literal
 
 import joblib
+import mlflow
+import mlflow.sklearn
 import pandas as pd
 from fastapi import FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -44,16 +46,30 @@ class PredictionResponse(BaseModel):
 
 
 def create_app(
-    model_path: Path | None = None, model_version: str | None = None
+    model_path: Path | None = None,
+    model_version: str | None = None,
+    model_uri: str | None = None,
 ) -> FastAPI:
+    resolved_model_uri = model_uri or os.environ.get("MODEL_URI")
     resolved_model_path = model_path or Path(
         os.environ.get("MODEL_PATH", "models/weather_model.joblib")
     )
-    resolved_model_version = model_version or os.environ.get("MODEL_VERSION", "local")
+    resolved_model_version = (
+        model_version
+        or os.environ.get("MODEL_VERSION")
+        or resolved_model_uri
+        or "local"
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        application.state.model = joblib.load(resolved_model_path)
+        if resolved_model_uri:
+            tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+            if tracking_uri:
+                mlflow.set_tracking_uri(tracking_uri)
+            application.state.model = mlflow.sklearn.load_model(resolved_model_uri)
+        else:
+            application.state.model = joblib.load(resolved_model_path)
         yield
 
     application = FastAPI(

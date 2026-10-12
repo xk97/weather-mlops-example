@@ -1,8 +1,12 @@
 import argparse
+import hashlib
 import json
+import os
 from pathlib import Path
 
 import joblib
+import mlflow
+import mlflow.sklearn
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
@@ -29,6 +33,25 @@ def evaluate_model(input_path: Path, model_path: Path, metrics_path: Path) -> di
     }
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
+    mlflow.set_tracking_uri(tracking_uri)
+    experiment = mlflow.set_experiment("weather-rain-prediction")
+    with mlflow.start_run(
+        experiment_id=experiment.experiment_id,
+        run_name=type(model).__name__,
+    ):
+        mlflow.log_params(model.get_params(deep=False))
+        mlflow.log_param(
+            "dataset_sha256", hashlib.sha256(input_path.read_bytes()).hexdigest()
+        )
+        mlflow.log_metrics(metrics)
+        mlflow.sklearn.log_model(
+            model,
+            name="model",
+            skops_trusted_types=["sklearn.tree._tree.Tree"],
+        )
+
     return metrics
 
 

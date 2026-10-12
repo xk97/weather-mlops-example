@@ -1,7 +1,7 @@
 schema: '2.0'
 stages:
   preprocess:
-    cmd: python -m src.features.build_features data/raw/weather.csv
+    cmd: python -m src.features.build_features data/raw/weather.csv 
       data/processed/weather.csv
     deps:
     - path: data/raw/weather.csv
@@ -18,7 +18,7 @@ stages:
       md5: e2406ba3c0fdd95b09bf10dbbcb97bcf
       size: 928
   train:
-    cmd: python -m src.models.train_model data/processed/weather.csv
+    cmd: python -m src.models.train_model data/processed/weather.csv 
       models/weather_model.joblib
     deps:
     - path: data/processed/weather.csv
@@ -39,7 +39,7 @@ stages:
       md5: a1a218ac66459141aded6f4bed645555
       size: 65913
   evaluate:
-    cmd: python -m src.models.evaluate_model data/processed/weather.csv
+    cmd: python -m src.models.evaluate_model data/processed/weather.csv 
       models/weather_model.joblib reports/metrics.json
     deps:
     - path: data/processed/weather.csv
@@ -56,8 +56,8 @@ stages:
       size: 892
     - path: src/models/evaluate_model.py
       hash: md5
-      md5: b25a2127778a3a86b084edf1ac43eab5
-      size: 1616
+      md5: aafdc9a3d4aeabc32abadf22dc937581
+      size: 2371
     outs:
     - path: reports/metrics.json
       hash: md5
