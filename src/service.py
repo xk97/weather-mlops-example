@@ -7,6 +7,7 @@ from typing import Literal
 import joblib
 import mlflow
 import mlflow.sklearn
+from mlflow.sklearn import load_model
 import pandas as pd
 from fastapi import FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -67,7 +68,7 @@ def create_app(
             tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
             if tracking_uri:
                 mlflow.set_tracking_uri(tracking_uri)
-            application.state.model = mlflow.sklearn.load_model(resolved_model_uri)
+            application.state.model = load_model(resolved_model_uri)
         else:
             application.state.model = joblib.load(resolved_model_path)
         yield

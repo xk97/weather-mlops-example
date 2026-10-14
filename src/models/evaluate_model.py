@@ -6,7 +6,7 @@ from pathlib import Path
 
 import joblib
 import mlflow
-import mlflow.sklearn
+from mlflow.sklearn import log_model
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
@@ -46,7 +46,7 @@ def evaluate_model(input_path: Path, model_path: Path, metrics_path: Path) -> di
             "dataset_sha256", hashlib.sha256(input_path.read_bytes()).hexdigest()
         )
         mlflow.log_metrics(metrics)
-        mlflow.sklearn.log_model(
+        log_model(
             model,
             name="model",
             skops_trusted_types=["sklearn.tree._tree.Tree"],
