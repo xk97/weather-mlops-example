@@ -159,14 +159,15 @@ version. Prometheus metrics include request counts, errors, latency, and
 prediction counts by outcome.
 
 To serve the model registered under the `champion` alias, first promote a run as
-described in the MLflow section. Then, in PowerShell, point the API at the local
-tracking database and registry URI:
+described in the MLflow section. Then start the API in PowerShell:
 
 ```powershell
-$env:MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
-$env:MODEL_URI = "models:/weather-rain-classifier@champion"
-.venv\Scripts\python.exe -m uvicorn src.service:app --host 127.0.0.1 --port 8000
+.\start_service.ps1
 ```
+
+The script defaults `MLFLOW_TRACKING_URI` to `sqlite:///mlflow.db` and `MODEL_URI`
+to `models:/weather-rain-classifier@champion`. Existing values in the PowerShell
+environment are preserved. Press Ctrl+C to stop the service.
 
 This serves the model version currently assigned to `champion`; changing the
 alias changes which version is loaded the next time the service starts. The
